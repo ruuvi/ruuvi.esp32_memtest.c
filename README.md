@@ -1,6 +1,9 @@
 # ruuvi.esp32_memtest.c
 A memory test for ESP32 chip. Does not test 100 % of memory.
 
+This memory test is based on the open source memory testing tool [MemTest86+](https://www.memtest.org).
+Here is the original archive with the source code: [memtest86+-5.01](https://www.memtest.org/download/archives/5.01/memtest86+-5.01.tar.gz).
+
 The memory test firmware is implemented as a second stage bootloader.
 It is based on an example from ESP-IDF v4.4.2: "examples/custom_bootloader/bootloader_override"
 
