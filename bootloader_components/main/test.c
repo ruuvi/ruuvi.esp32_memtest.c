@@ -7,16 +7,21 @@
  * By Samuel DEMEULEMEESTER, sdemeule@memtest.org
  * http://www.canardpc.com - http://www.memtest.org
  * Thanks to Passmark for calculate_chunk() and various comments !
+ *
+ * Ported to ESP32 by TheSomeMan
  */
  
 #include "test.h"
 #include "config.h"
 #include "stdint.h"
+#include "memtest_random.h"
+#if !defined(ESP_PLATFORM)
 #include "cpuid.h"
 #include "smp.h"
 #include <sys/io.h>
 
 extern struct cpu_ident cpu_id;
+#endif
 extern volatile int    mstr_cpu;
 extern volatile int    run_cpus;
 extern volatile int    test;
@@ -25,13 +30,16 @@ extern int test_ticks, nticks;
 extern struct tseq tseq[];
 extern void update_err_counts(void);
 extern void print_err_counts(void);
-void rand_seed( unsigned int seed1, unsigned int seed2, int me);
-ulong rand(int me);
+
 void poll_errors();
 
 static inline ulong roundup(ulong value, ulong mask)
 {
+#if defined(ESP_PLATFORM)
+	return value;
+#else
 	return (value + mask) & ~mask;
+#endif
 }
 
 // start / end - return values for range to test
@@ -207,12 +215,11 @@ void addr_tst2(int me)
 			if (p == pe ) {
 				break;
 			}
-
-/* Original C code replaced with hand tuned assembly code
- *			for (; p <= pe; p++) {
- *				*p = (ulong)p;
- *			}
- */
+#if defined(ESP_PLATFORM)
+			for (; p <= pe; p++) {
+				*p = (ulong)p;
+			}
+#else
 			asm __volatile__ (
 				"jmp L91\n\t"
 				".p2align 4,,7\n\t"
@@ -224,6 +231,7 @@ void addr_tst2(int me)
 				"jb L90\n\t"
 				: : "D" (p), "d" (pe)
 			);
+#endif
 			p = pe + 1;
 		} while (!done);
 	}
@@ -252,13 +260,14 @@ void addr_tst2(int me)
 			if (p == pe ) {
 				break;
 			}
-/* Original C code replaced with hand tuned assembly code
- *			for (; p <= pe; p++) {
- *				if((bad = *p) != (ulong)p) {
- *					ad_err2((ulong)p, bad);
- *				}
- *			}
- */
+#if defined(ESP_PLATFORM)
+			for (; p <= pe; p++) {
+ 				ulong bad;
+				if((bad = *p) != (ulong)p) {
+					ad_err2(p, bad);
+				}
+			}
+#else
 			asm __volatile__ (
 				"jmp L95\n\t"
 				".p2align 4,,7\n\t"
@@ -287,6 +296,7 @@ void addr_tst2(int me)
 				: : "D" (p), "d" (pe)
 				: "ecx"
 			);
+#endif
 			p = pe + 1;
 		} while (!done);
 	}
@@ -304,20 +314,27 @@ void movinvr(int me)
 	ulong *p;
 	ulong *pe;
 	ulong *start,*end;
+#if !defined(ESP_PLATFORM)
 	ulong xorVal;
-	//ulong num, bad;
+#else
+	ulong num, bad;
+#endif
 
 	/* Initialize memory with initial sequence of random numbers.  */
+#if !defined(ESP_PLATFORM)
 	if (cpu_id.fid.bits.rdtsc) {
 		asm __volatile__ ("rdtsc":"=a" (seed1),"=d" (seed2));
 	} else {
+#endif
 		seed1 = 521288629 + v->pass;
 		seed2 = 362436069 - v->pass;
+#if !defined(ESP_PLATFORM)
 	}
+#endif
 
 	/* Display the current seed */
         if (mstr_cpu == me) hprint(LINE_PAT, COL_PAT, seed1);
-	rand_seed(seed1, seed2, me);
+	memtest_rand_seed(seed1, seed2, me);
 	for (j=0; j<segs; j++) {
 		calculate_chunk(&start, &end, me, j, 4);
 		pe = start;
@@ -340,13 +357,12 @@ void movinvr(int me)
 			if (p == pe ) {
 				break;
 			}
+#if defined(ESP_PLATFORM)
 /* Original C code replaced with hand tuned assembly code */
-/*
 			for (; p <= pe; p++) {
-				*p = rand(me);
+				*p = memtest_rand(me);
 			}
- */
-
+#else
                         asm __volatile__ (
                                 "jmp L200\n\t"
                                 ".p2align 4,,7\n\t"
@@ -354,7 +370,7 @@ void movinvr(int me)
                                 "addl $4,%%edi\n\t"
                                 "L200:\n\t"
 				"pushl %%ecx\n\t" \
-                                "call rand\n\t"
+                                "call memtest_rand\n\t"
 				"popl %%ecx\n\t" \
 				"movl %%eax,(%%edi)\n\t"
                                 "cmpl %%ebx,%%edi\n\t"
@@ -362,6 +378,7 @@ void movinvr(int me)
                                 : : "D" (p), "b" (pe), "c" (me)
 				: "eax"
                         );
+#endif
 			p = pe + 1;
 		} while (!done);
 	}
@@ -370,7 +387,7 @@ void movinvr(int me)
 	 * write the complement for each memory location.
 	 */
 	for (i=0; i<2; i++) {
-		rand_seed(seed1, seed2, me);
+		memtest_rand_seed(seed1, seed2, me);
 		for (j=0; j<segs; j++) {
 			calculate_chunk(&start, &end, me, j, 4);
 			pe = start;
@@ -394,9 +411,9 @@ void movinvr(int me)
 					break;
 				}
 /* Original C code replaced with hand tuned assembly code */
-				
-				/*for (; p <= pe; p++) {
-					num = rand(me);
+#if defined(ESP_PLATFORM)
+				for (; p <= pe; p++) {
+					num = memtest_rand(me);
 					if (i) {
 						num = ~num;
 					}
@@ -404,8 +421,9 @@ void movinvr(int me)
 						error((ulong*)p, num, bad);
 					}
 					*p = ~num;
-				}*/
-
+				}
+#else
+				ulong xorVal;
 				if (i) {
 					xorVal = 0xffffffff;
 				} else {
@@ -433,7 +451,7 @@ void movinvr(int me)
 					// we don't need the current eax value and want it to change to the return value
 					// we overwrite ecx shortly after this discarding its current value
 					"pushl %%edx\n\t" // Push function inputs onto stack
-					"call rand\n\t"
+					"call memtest_rand\n\t"
 					"popl %%edx\n\t" // Remove function inputs from stack
 
 					// XOR the random number with xorVal(ebx), which is either 0xffffffff or 0 depending on the outer loop
@@ -482,6 +500,7 @@ void movinvr(int me)
 						 "d" (me)
 					: "eax", "ecx"
 				);
+#endif
 				p = pe + 1;
 			} while (!done);
 		}
@@ -495,7 +514,10 @@ void movinvr(int me)
 void movinv1 (int iter, ulong p1, ulong p2, int me)
 {
 	int i, j, done;
-	ulong *p, *pe, len, *start, *end;
+	ulong *p, *pe, *start, *end;
+#if !defined(ESP_PLATFORM)
+	ulong len;
+#endif
 
 	/* Display the current pattern */
         if (mstr_cpu == me) hprint(LINE_PAT, COL_PAT, p1);
@@ -522,23 +544,26 @@ void movinv1 (int iter, ulong p1, ulong p2, int me)
 				pe = end;
 				done++;
 			}
+#if !defined(ESP_PLATFORM)
 			len = pe - p + 1;
+#endif
 			if (p == pe ) {
 				break;
 			}
 
 			//Original C code replaced with hand tuned assembly code
 			// seems broken
-			/*for (; p <= pe; p++) {
+#if defined(ESP_PLATFORM)
+			for (; p <= pe; p++) {
 				*p = p1;
-			}*/
-
+			}
+#else
 			asm __volatile__ (
 				"rep\n\t" \
 				"stosl\n\t"
 				: : "c" (len), "D" (p), "a" (p1)
 			);
-
+#endif
 			p = pe + 1;
 		} while (!done);
 	}
@@ -572,13 +597,15 @@ void movinv1 (int iter, ulong p1, ulong p2, int me)
 
 				// Original C code replaced with hand tuned assembly code 
 				// seems broken
- 				/*for (; p <= pe; p++) {
+#if defined(ESP_PLATFORM)
+ 				for (; p <= pe; p++) {
+					ulong bad;
 					if ((bad=*p) != p1) {
  						error((ulong*)p, p1, bad);
  					}
  					*p = p2;
- 				}*/
-
+ 				}
+#else
 				asm __volatile__ (
 					"jmp L2\n\t" \
 					".p2align 4,,7\n\t" \
@@ -612,6 +639,7 @@ void movinv1 (int iter, ulong p1, ulong p2, int me)
 					:: "a" (p1), "D" (p), "d" (pe), "b" (p2)
 					: "ecx"
 				);
+#endif
 				p = pe + 1;
 			} while (!done);
 		}
@@ -644,13 +672,15 @@ void movinv1 (int iter, ulong p1, ulong p2, int me)
 
 				//Original C code replaced with hand tuned assembly code
 				// seems broken
-				/*do {
+#if defined(ESP_PLATFORM)
+				do {
+					ulong bad;
 					if ((bad=*p) != p2) {
 					error((ulong*)p, p2, bad);
 					}
 					*p = p1;
-				} while (--p >= pe);*/
-
+				} while (--p >= pe);
+#else
 				asm __volatile__ (
 					"jmp L9\n\t"
 					".p2align 4,,7\n\t"
@@ -684,6 +714,7 @@ void movinv1 (int iter, ulong p1, ulong p2, int me)
 					:: "a" (p1), "D" (p), "d" (pe), "b" (p2)
 					: "ecx"
 				);
+#endif
 				p = pe - 1;
 			} while (!done);
 		}
@@ -725,19 +756,20 @@ void movinv32(int iter, ulong p1, ulong lb, ulong hb, int sval, int off,int me)
 				break;
 			}
 			/* Do a SPINSZ section of memory */
-/* Original C code replaced with hand tuned assembly code
- *			while (p <= pe) {
- *				*p = pat;
- *				if (++k >= 32) {
- *					pat = lb;
- *					k = 0;
- *				} else {
- *					pat = pat << 1;
- *					pat |= sval;
- *				}
- *				p++;
- *			}
- */
+#if defined(ESP_PLATFORM)
+/* Original C code replaced with hand tuned assembly code */
+			while (p <= pe) {
+				*p = pat;
+				if (++k >= 32) {
+					pat = lb;
+					k = 0;
+				} else {
+					pat = pat << 1;
+					pat |= sval;
+				}
+				p++;
+			}
+#else
 			asm __volatile__ (
                                 "jmp L20\n\t"
                                 ".p2align 4,,7\n\t"
@@ -761,6 +793,7 @@ void movinv32(int iter, ulong p1, ulong lb, ulong hb, int sval, int off,int me)
                                 : "D" (p),"d" (pe),"b" (k),"c" (pat),
                                         "a" (sval), "S" (lb)
 			);
+#endif
 			p = pe + 1;
 		} while (!done);
 	}
@@ -793,24 +826,26 @@ void movinv32(int iter, ulong p1, ulong lb, ulong hb, int sval, int off,int me)
 				if (p == pe ) {
 					break;
 				}
-/* Original C code replaced with hand tuned assembly code
- *				while (1) {
- *					if ((bad=*p) != pat) {
- *						error((ulong*)p, pat, bad);
- *					}
- *					*p = ~pat;
- *					if (p >= pe) break;
- *					p++;
- *
- *					if (++k >= 32) {
- *						pat = lb;
- *						k = 0;
- *					} else {
- *						pat = pat << 1;
- *						pat |= sval;
- *					}
- *				}
- */
+/* Original C code replaced with hand tuned assembly code */
+#if defined(ESP_PLATFORM)
+				while (1) {
+					ulong bad;
+					if ((bad=*p) != pat) {
+						error((ulong*)p, pat, bad);
+					}
+					*p = ~pat;
+					if (p >= pe) break;
+					p++;
+
+					if (++k >= 32) {
+						pat = lb;
+						k = 0;
+					} else {
+						pat = pat << 1;
+						pat |= sval;
+					}
+				}
+#else
 				asm __volatile__ (
                                         "pushl %%ebp\n\t"
                                         "jmp L30\n\t"
@@ -864,6 +899,7 @@ void movinv32(int iter, ulong p1, ulong lb, ulong hb, int sval, int off,int me)
                                         : "D" (p),"d" (pe),"b" (k),"c" (pat),
                                                 "a" (sval), "S" (lb)
 				);
+#endif
 				p = pe + 1;
 			} while (!done);
 		}
@@ -903,23 +939,25 @@ void movinv32(int iter, ulong p1, ulong lb, ulong hb, int sval, int off,int me)
 				if (p == pe ) {
 					break;
 				}
-/* Original C code replaced with hand tuned assembly code
- *				while(1) {
- *					if ((bad=*p) != ~pat) {
- *						error((ulong*)p, ~pat, bad);
- *					}
- *					*p = pat;
+/* Original C code replaced with hand tuned assembly code */
+#if defined(ESP_PLATFORM)
+				while(1) {
+					ulong bad;
+					if ((bad=*p) != ~pat) {
+						error((ulong*)p, ~pat, bad);
+					}
+					*p = pat;
 					if (p >= pe) break;
 					p++;
- *					if (--k <= 0) {
- *						pat = hb;
- *						k = 32;
- *					} else {
- *						pat = pat >> 1;
- *						pat |= p3;
- *					}
- *				};
- */
+					if (--k <= 0) {
+						pat = hb;
+						k = 32;
+					} else {
+						pat = pat >> 1;
+						pat |= p3;
+					}
+				};
+#else
 				asm __volatile__ (
                                         "pushl %%ebp\n\t"
                                         "jmp L40\n\t"
@@ -973,6 +1011,7 @@ void movinv32(int iter, ulong p1, ulong lb, ulong hb, int sval, int off,int me)
                                         : "D" (p),"d" (pe),"b" (k),"c" (pat),
                                                 "a" (p3), "S" (hb)
 				);
+#endif
 				p = pe - 1;
 			} while (!done);
 		}
@@ -1020,11 +1059,12 @@ void modtst(int offset, int iter, ulong p1, ulong p2, int me)
 			if (p == pe ) {
 				break;
 			}
-/* Original C code replaced with hand tuned assembly code
- *			for (; p <= pe; p += MOD_SZ) {
- *				*p = p1;
- *			}
- */
+/* Original C code replaced with hand tuned assembly code */
+#if defined(ESP_PLATFORM)
+			for (; p <= pe; p += MOD_SZ) {
+				*p = p1;
+			}
+#else
 			asm __volatile__ (
 				"jmp L60\n\t" \
 				".p2align 4,,7\n\t" \
@@ -1037,6 +1077,7 @@ void modtst(int offset, int iter, ulong p1, ulong p2, int me)
 				: "=D" (p)
 				: "D" (p), "d" (pe), "a" (p1)
 			);
+#endif
 		} while (!done);
 	}
 
@@ -1065,16 +1106,17 @@ void modtst(int offset, int iter, ulong p1, ulong p2, int me)
 				if (p == pe ) {
 					break;
 				}
-/* Original C code replaced with hand tuned assembly code
- *				for (; p <= pe; p++) {
- *					if (k != offset) {
- *						*p = p2;
- *					}
- *					if (++k > MOD_SZ-1) {
- *						k = 0;
- *					}
- *				}
- */
+/* Original C code replaced with hand tuned assembly code */
+#if defined(ESP_PLATFORM)
+				for (; p <= pe; p++) {
+					if (k != offset) {
+						*p = p2;
+					}
+					if (++k > MOD_SZ-1) {
+						k = 0;
+					}
+				}
+#else
 				asm __volatile__ (
 					"jmp L50\n\t" \
 					".p2align 4,,7\n\t" \
@@ -1097,6 +1139,7 @@ void modtst(int offset, int iter, ulong p1, ulong p2, int me)
 					: "D" (p), "d" (pe), "a" (p2),
 						"b" (k), "c" (offset)
 				);
+#endif
 				p = pe + 1;
 			} while (!done);
 		}
@@ -1126,13 +1169,15 @@ void modtst(int offset, int iter, ulong p1, ulong p2, int me)
 			if (p == pe ) {
 				break;
 			}
-/* Original C code replaced with hand tuned assembly code
- *			for (; p <= pe; p += MOD_SZ) {
- *				if ((bad=*p) != p1) {
- *					error((ulong*)p, p1, bad);
- *				}
- *			}
- */
+/* Original C code replaced with hand tuned assembly code */
+#if defined(ESP_PLATFORM)
+			for (; p <= pe; p += MOD_SZ) {
+				ulong bad;
+				if ((bad=*p) != p1) {
+					error((ulong*)p, p1, bad);
+				}
+			}
+#else
 			asm __volatile__ (
 				"jmp L70\n\t" \
 				".p2align 4,,7\n\t" \
@@ -1164,6 +1209,7 @@ void modtst(int offset, int iter, ulong p1, ulong p2, int me)
 				: "D" (p), "d" (pe), "a" (p1)
 				: "ecx"
 			);
+#endif
 		} while (!done);
 	}
 }
@@ -1172,6 +1218,7 @@ void modtst(int offset, int iter, ulong p1, ulong p2, int me)
  * Test memory using block moves 
  * Adapted from Robert Redelmeier's burnBX test
  */
+#if 0
 void block_move(int iter, int me)
 {
 	int i, j, done;
@@ -1211,6 +1258,9 @@ void block_move(int iter, int me)
 			}
 			len  = ((ulong)pe - (ulong)p) / 64;
 			//len++;
+#if defined(ESP_PLATFORM)
+#error Not implemented
+#else
 			asm __volatile__ (
 				"jmp L100\n\t"
 
@@ -1255,6 +1305,7 @@ void block_move(int iter, int me)
 				: "D" (p), "c" (len), "a" (1)
 				: "edx"
 			);
+#endif
 		} while (!done);
 	}
 	s_barrier();
@@ -1292,6 +1343,9 @@ void block_move(int iter, int me)
 			for(i=0; i<iter; i++) {
 				do_tick(me);
 				BAILR
+#if defined(ESP_PLATFORM)
+#error Not implemented
+#else
 				asm __volatile__ (
 					"cld\n"
 					"jmp L110\n\t"
@@ -1331,6 +1385,7 @@ void block_move(int iter, int me)
 					:: "g" (p), "g" (pp), "g" (len)
 					: "edi", "esi", "ecx"
 				);
+#endif
 			}
 			p = pe;
 		} while (!done);
@@ -1367,6 +1422,9 @@ void block_move(int iter, int me)
 				break;
 			}
 			pe-=2;	/* the last dwords to test are pe[0] and pe[1] */
+#if defined(ESP_PLATFORM)
+#error Not implemented
+#else
 			asm __volatile__ (
 				"jmp L120\n\t"
 
@@ -1403,9 +1461,11 @@ void block_move(int iter, int me)
 				: "D" (p), "d" (pe)
 				: "ecx"
 			);
+#endif
 		} while (!done);
 	}
 }
+#endif
 
 /*
  * Test memory for bit fade, fill memory with pattern.
@@ -1497,6 +1557,7 @@ void bit_fade_chk(ulong p1, int me)
 
 
 /* Sleep for N seconds */
+#if !defined(ESP_PLATFORM)
 void sleep(long n, int flag, int me, int sms)
 {
 	ulong sh, sl, l, h, t, ip=0;
@@ -1542,9 +1603,11 @@ void sleep(long n, int flag, int me, int sms)
 		}
 	}
 }
+#endif
 
 /* Beep function */
 
+#if !defined(ESP_PLATFORM)
 void beep(unsigned int frequency)
 {
 	
@@ -1566,3 +1629,5 @@ void beep(unsigned int frequency)
 	// Switch off the speaker
 	outb(inb_p(0x61)&0xFC, 0x61);
 }
+#endif
+
