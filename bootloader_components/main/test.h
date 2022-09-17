@@ -2,10 +2,14 @@
  *
  * Released under version 2 of the Gnu Public License.
  * By Chris Brady
+ *
+ * Ported to ESP32 by TheSomeMan
  */
 
 #ifndef _TEST_H_
 #define _TEST_H_
+
+#if !defined(ESP_PLATFORM)
 #define E88     0x00
 #define E801    0x04
 #define E820NR  0x08           /* # entries in E820MAP */
@@ -13,13 +17,16 @@
 #define E820MAX 127            /* number of entries in E820MAP */
 #define E820ENTRY_SIZE 20
 #define MEMINFO_SIZE (E820MAP + E820MAX * E820ENTRY_SIZE)
+#endif
 
 #ifndef __ASSEMBLY__
 
+#if !defined(ESP_PLATFORM)
 #define E820_RAM        1
 #define E820_RESERVED   2
 #define E820_ACPI       3 /* usable as RAM once ACPI tables have been read */
 #define E820_NVS        4
+#endif
 
 struct e820entry {
         unsigned long long addr;        /* start of memory segment */
@@ -27,6 +34,7 @@ struct e820entry {
         unsigned long type;             /* type of memory segment */
 };
 
+#if !defined(ESP_PLATFORM)
 struct mem_info_t {
 	unsigned long e88_mem_k;	/* 0x00 */
 	unsigned long e801_mem_k;	/* 0x04 */
@@ -34,8 +42,10 @@ struct mem_info_t {
 	struct e820entry e820[E820MAX];	/* 0x0c */
 					/* 0x28c */
 };
+#endif
 
 typedef unsigned long ulong;
+
 #define STACKSIZE       (8*1024)
 #define MAX_MEM         0x7FF00000      /* 8 TB */
 #define WIN_SZ          0x80000         /* 2 GB */
@@ -43,8 +53,13 @@ typedef unsigned long ulong;
 
 #define SPINSZ		0x4000000	/* 256 MB */
 #define MOD_SZ		20
+#if !defined(ESP_PLATFORM)
 #define BAILOUT		if (bail) return(1);
 #define BAILR		if (bail) return;
+#else
+#define BAILOUT		(void)0;
+#define BAILR		(void)0;
+#endif
 
 #define RES_START	0xa0000
 #define RES_END		0x100000
@@ -116,21 +131,31 @@ int query_pcbios(void);
 int insertaddress(ulong);
 void printpatn(void);
 void printpatn(void);
+#if !defined(ESP_PLATFORM)
 void itoa(char s[], int n); 
+#endif
 void reverse(char *p);
 void serial_console_setup(char *param);
 void serial_echo_init(void);
 void serial_echo_print(const char *s);
 void ttyprint(int y, int x, const char *s);
 void ttyprintc(int y, int x, char c);
+#if !defined(ESP_PLATFORM)
 void cprint(int y,int x, const char *s);
+#else
+#define cprint(y,x, s) (void)0
+#endif
 void cplace(int y,int x, const char s);
 void hprint(int y,int x, ulong val);
 void hprint2(int y,int x, ulong val, int len);
 void hprint3(int y,int x, ulong val, int len);
 void xprint(int y,int x,ulong val);
 void aprint(int y,int x,ulong page);
+#if !defined(ESP_PLATFORM)
 void dprint(int y,int x,ulong val,int len, int right);
+#else
+#define dprint(y, x, val, len, right) (void)0
+#endif
 void movinv1(int iter, ulong p1, ulong p2, int cpu);
 void movinvr(int cpu);
 void movinv32(int iter, ulong p1, ulong lb, ulong mb, int sval, int off,
@@ -139,7 +164,11 @@ void modtst(int off, int iter, ulong p1, ulong p2, int cpu);
 void error(ulong* adr, ulong good, ulong bad);
 void ad_err1(ulong *adr1, ulong *adr2, ulong good, ulong bad);
 void ad_err2(ulong *adr, ulong bad);
+#if !defined(ESP_PLATFORM)
 void do_tick();
+#else
+#define do_tick(x) (void)0
+#endif
 void init(void);
 struct eregs;
 void inter(struct eregs *trap_regs);
@@ -182,7 +211,9 @@ void show_spd(void);
 int map_page(unsigned long page);
 void *mapping(unsigned long page_address);
 void *emapping(unsigned long page_address);
+#if !defined(ESP_PLATFORM)
 int isdigit(char c);
+#endif
 ulong memspeed(ulong src, ulong len, int iter);
 unsigned long page_of(void *ptr);
 ulong correct_tsc(ulong el_org);
@@ -241,7 +272,7 @@ struct tseq {
 	short pat;
 	short iter;
 	short errors;
-	char *msg;
+	const char *msg;
 };
 
 struct xadr {
@@ -267,7 +298,11 @@ struct err_info {
 
 #define X86_FEATURE_PAE		(0*32+ 6) /* Physical Address Extensions */
 
+#if !defined(ESP_PLATFORM)
 #define MAX_MEM_SEGMENTS E820MAX
+#else
+#define MAX_MEM_SEGMENTS 3
+#endif
 
 /* Define common variables accross relocations of memtest86 */
 struct vars {
@@ -313,6 +348,10 @@ extern unsigned char _start[], _end[], startup_32[];
 extern unsigned char _size, _pages;
 
 extern struct mem_info_t mem_info;
+
+extern volatile int    run_cpus;
+extern volatile int segs;
+extern volatile int bail;
 
 #endif /* __ASSEMBLY__ */
 #endif /* _TEST_H_ */
