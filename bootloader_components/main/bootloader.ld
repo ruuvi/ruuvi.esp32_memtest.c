@@ -1,26 +1,13 @@
-/*
-Linker file used to link the bootloader.
-*/
-
-
-/* Simplified memory map for the bootloader
-
-   The main purpose is to make sure the bootloader can load into main memory
-   without overwriting itself.
-*/
-
 MEMORY
 {
-  /* IRAM POOL1, used for APP CPU cache. Bootloader runs from here during the final stage of loading the app because APP CPU is still held in reset, the main app enables APP CPU cache */
-  iram_loader_seg (RWX) :           org = 0x40078000, len = 0x8000  /* 32KB, APP CPU cache */
-  /* 63kB, IRAM. We skip the first 1k to prevent the entry point being
-     placed into the same range as exception vectors in the app.
-     This leads to idf_monitor decoding ROM bootloader "entry 0x40080xxx"
-     message as one of the exception vectors, which looks scary to users.
-  */
-  iram_seg (RWX) :                  org = 0x40080400, len = 0xfc00
-  /* 64k at the end of DRAM, after ROM bootloader stack */
-  dram_seg (RW) :                  	org = 0x3FFF0000, len = 0x10000
+  sram0_seg (RW) :                 org = 0x40070000, len = 0x30000
+  sram2_seg (RW) :                 org = 0x3FFAE000, len = 0x32000
+  sram1_seg (RW) :                 org = 0x3FFE0000, len = 0x20000
+
+  /* 0x1000 bytes are reserved for stack */
+  rtc_slow_seg (RW) :              org = 0x50000000, len = 0x1000
+
+  rtc_fast_seg (RX) :              org = 0x400c0000, len = 0x2000
 }
 
 /*  Default entry point:  */
@@ -29,6 +16,26 @@ ENTRY(call_start_cpu0);
 
 SECTIONS
 {
+
+  .sram0 :
+  {
+    __sram0_begin = .;
+    __sram0_end = ORIGIN(sram0_seg) + LENGTH(sram0_seg);
+  } > sram0_seg
+
+  .sram1 :
+  {
+    . += 0x400; /* Vectors table ? */
+    __sram1_begin = .;
+    __sram1_end = ORIGIN(sram1_seg) + LENGTH(sram1_seg);
+  } > sram1_seg
+
+  .sram2 :
+  {
+    . += 0x20; /* Some global memory is used by ROM bootloader ? */
+    __sram2_begin = .;
+    __sram2_end = ORIGIN(sram2_seg) + LENGTH(sram2_seg);
+  } > sram2_seg
 
   .iram_loader.text :
   {
@@ -67,7 +74,7 @@ SECTIONS
     *(.fini)
     *(.gnu.version)
     _loader_text_end = ABSOLUTE(.);
-  } > iram_loader_seg
+  } > rtc_fast_seg
 
   .iram.text :
   {
@@ -75,7 +82,7 @@ SECTIONS
     *(.entry.text)
     *(.init.literal)
     *(.init)
-  } > iram_seg
+  } > rtc_fast_seg
 
 
   /* Shared RAM */
@@ -99,7 +106,7 @@ SECTIONS
     *(COMMON)
     . = ALIGN (8);
     _bss_end = ABSOLUTE(.);
-  } >dram_seg
+  } >rtc_slow_seg
 
   .dram0.data :
   {
@@ -114,7 +121,7 @@ SECTIONS
     *(.gnu.linkonce.s2.*)
     *(.jcr)
     _data_end = ABSOLUTE(.);
-  } >dram_seg
+  } >rtc_slow_seg
 
   .dram0.rodata :
   {
@@ -159,7 +166,7 @@ SECTIONS
     _lit4_end = ABSOLUTE(.);
     . = ALIGN(4);
     _dram_end = ABSOLUTE(.);
-  } >dram_seg
+  } > rtc_slow_seg
 
   .iram.text :
   {
@@ -180,6 +187,6 @@ SECTIONS
 
     _text_end = ABSOLUTE(.);
     _etext = .;
-  } > iram_seg
+  } > rtc_fast_seg
 
 }
