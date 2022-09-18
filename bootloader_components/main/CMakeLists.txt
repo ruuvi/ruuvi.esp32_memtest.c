@@ -10,8 +10,8 @@ idf_component_register(SRCS
 
 idf_build_get_property(target IDF_TARGET)
 
-set(scripts "./bootloader.ld"
-        "./bootloader.rom.ld")
+set(scripts "./ld/bootloader.ld"
+        "./ld/bootloader.rom.ld")
 
 target_linker_script(${COMPONENT_LIB} INTERFACE "${scripts}")
 
