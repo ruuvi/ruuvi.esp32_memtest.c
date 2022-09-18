@@ -261,6 +261,8 @@ void addr_tst2(int me)
 				break;
 			}
 #if defined(ESP_PLATFORM)
+/* Original C code replaced with hand tuned assembly code
+ */
 			for (; p <= pe; p++) {
  				ulong bad;
 				if((bad = *p) != (ulong)p) {
@@ -558,6 +560,7 @@ void movinv1 (int iter, ulong p1, ulong p2, int me)
 				*p = p1;
 			}
 #else
+			ulong len = pe - p + 1;
 			asm __volatile__ (
 				"rep\n\t" \
 				"stosl\n\t"
@@ -730,14 +733,15 @@ void movinv32(int iter, ulong p1, ulong lb, ulong hb, int sval, int off,int me)
 	/* Display the current pattern */
 	if (mstr_cpu == me) hprint(LINE_PAT, COL_PAT, p1);
 
+	k = off;
+	pat = p1;
+
 	/* Initialize memory with the initial pattern.  */
 	for (j=0; j<segs; j++) {
 		calculate_chunk(&start, &end, me, j, 64);
 		pe = start;
 		p = start;
 		done = 0;
-		k = off;
-		pat = p1;
 		do {
 			do_tick(me);
 			BAILR
@@ -802,13 +806,13 @@ void movinv32(int iter, ulong p1, ulong lb, ulong hb, int sval, int off,int me)
 	 * write the complement for each memory location. Test from bottom
 	 * up and then from the top down.  */
 	for (i=0; i<iter; i++) {
+		k = off;
+		pat = p1;
 		for (j=0; j<segs; j++) {
 			calculate_chunk(&start, &end, me, j, 64);
 			pe = start;
 			p = start;
 			done = 0;
-			k = off;
-			pat = p1;
 			do {
 				do_tick(me);
 				BAILR
@@ -834,8 +838,6 @@ void movinv32(int iter, ulong p1, ulong lb, ulong hb, int sval, int off,int me)
 						error((ulong*)p, pat, bad);
 					}
 					*p = ~pat;
-					if (p >= pe) break;
-					p++;
 
 					if (++k >= 32) {
 						pat = lb;
@@ -844,6 +846,9 @@ void movinv32(int iter, ulong p1, ulong lb, ulong hb, int sval, int off,int me)
 						pat = pat << 1;
 						pat |= sval;
 					}
+
+					if (p >= pe) break;
+					p++;
 				}
 #else
 				asm __volatile__ (
@@ -947,8 +952,6 @@ void movinv32(int iter, ulong p1, ulong lb, ulong hb, int sval, int off,int me)
 						error((ulong*)p, ~pat, bad);
 					}
 					*p = pat;
-					if (p >= pe) break;
-					p++;
 					if (--k <= 0) {
 						pat = hb;
 						k = 32;
@@ -956,6 +959,8 @@ void movinv32(int iter, ulong p1, ulong lb, ulong hb, int sval, int off,int me)
 						pat = pat >> 1;
 						pat |= p3;
 					}
+					if (p <= pe) break;
+					p--;
 				};
 #else
 				asm __volatile__ (
