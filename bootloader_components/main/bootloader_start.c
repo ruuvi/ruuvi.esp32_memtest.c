@@ -3,6 +3,14 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
+/**
+ * @file bootloader_start.c
+ * @brief Implementation of MemTest for ESP32 based on the bootloader example provided by Espressif Systems (Shanghai) CO LTD
+ * @author TheSomeMan
+ * @date 2022-09-18
+ * @copyright Ruuvi Innovations Ltd, license BSD-3-Clause.
+ */
+
 #include <stdbool.h>
 #include "sdkconfig.h"
 #include "esp_log.h"
@@ -22,6 +30,7 @@
 #include "soc/dport_reg.h"
 #include "rom/cache.h"
 #include "rom/spi_flash.h"
+#include "memtest.h"
 
 static void bootloader_reset_mmu(void)
 {
@@ -91,6 +100,20 @@ void __attribute__((noreturn)) call_start_cpu0(void)
 
   // Disable IRQs
   XTOS_SET_INTLEVEL(XCHAL_EXCM_LEVEL);
+
+  esp_rom_printf("\n\n");
+  esp_rom_printf("=====================\n");
+  esp_rom_printf("| MemTest for ESP32 |\n");
+  esp_rom_printf("=====================\n\n");
+
+  memtest_init();
+
+  esp_rom_printf("\n");
+
+  const bool res = do_test();
+
+  esp_rom_printf("\n=====================\n");
+  esp_rom_printf("MemTest %s\n", res ? "passed" : "failed");
 
   while (1) {
   }
